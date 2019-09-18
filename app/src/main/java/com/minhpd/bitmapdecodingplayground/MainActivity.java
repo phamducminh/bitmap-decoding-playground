@@ -10,6 +10,7 @@ import android.graphics.Rect;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.ScrollView;
@@ -25,6 +26,8 @@ import java.io.IOException;
 import java.io.InputStream;
 
 public class MainActivity extends AppCompatActivity {
+
+    private static final String TAG = "MainActivity";
 
     private static final String INTENT_IMAGE_TYPE = "image/*";
     private static final int BITMAP_FACTORY_SCALE = 770;
@@ -108,7 +111,7 @@ public class MainActivity extends AppCompatActivity {
                     bitmap = decodeScaledAndCroppedBitmap(image); // ignore exif
                     break;
                 case IMAGE_DECODER_SCALE:
-                    bitmap = decodeScaledBitmapWithTargetSize(image); // respect exif
+                    bitmap = decodeScaledBitmapWithTargetSize2(image); // respect exif
                     break;
                 case IMAGE_DECODER_SCALE_AND_CROP:
                     bitmap = decodeScaledBitmapWithTargetSampleSize(image); // respect exif
@@ -142,7 +145,9 @@ public class MainActivity extends AppCompatActivity {
 
         try {
             InputStream input = getContentResolver().openInputStream(image);
+            long start = System.currentTimeMillis();
             Bitmap bitmap = BitmapFactory.decodeStream(input, null, options);
+            Log.d(TAG, "decodeScaledBitmap: " + (System.currentTimeMillis() - start));
             // reset density to display bitmap correctly
             if (bitmap != null)
                 bitmap.setDensity(getResources().getDisplayMetrics().densityDpi);
@@ -159,8 +164,8 @@ public class MainActivity extends AppCompatActivity {
         int areaLimit = REQUIRED_IMAGE_WIDTH * REQUIRED_IMAGE_WIDTH;
         int targetWidth = (int) Math.sqrt((double) areaLimit * initialSize.width / initialSize.height);
         int targetHeight = (int) Math.sqrt((double) areaLimit * initialSize.height / initialSize.width);
-//        int sampleSize = calculateSampleSize(initialSize.width, initialSize.height, REQUIRED_IMAGE_WIDTH);
-        int sampleSize = calculateSampleSize(initialSize.width, REQUIRED_IMAGE_WIDTH);
+        int sampleSize = calculateSampleSize(initialSize.width, initialSize.height, REQUIRED_IMAGE_WIDTH);
+//        int sampleSize = calculateSampleSize(initialSize.width, REQUIRED_IMAGE_WIDTH);
 
         BitmapFactory.Options options = new BitmapFactory.Options();
         options.inSampleSize = sampleSize;
@@ -170,7 +175,9 @@ public class MainActivity extends AppCompatActivity {
 
         try {
             InputStream input = getContentResolver().openInputStream(image);
+            long start = System.currentTimeMillis();
             Bitmap bitmap = BitmapFactory.decodeStream(input, null, options);
+            Log.d(TAG, "decodeScaledBitmap2: " + (System.currentTimeMillis() - start));
             // reset density to display bitmap correctly
             if (bitmap != null)
                 bitmap.setDensity(getResources().getDisplayMetrics().densityDpi);
@@ -220,7 +227,39 @@ public class MainActivity extends AppCompatActivity {
 
         ImageDecoder.Source source = ImageDecoder.createSource(getContentResolver(), image);
         try {
-            return ImageDecoder.decodeBitmap(source, header);
+            long start = System.currentTimeMillis();
+            Bitmap bitmap = ImageDecoder.decodeBitmap(source, header);
+            Log.d(TAG, "decodeScaledBitmapWithTargetSize: " + (System.currentTimeMillis() - start));
+            return bitmap;
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return null;
+    }
+
+    @TargetApi(28)
+    private Bitmap decodeScaledBitmapWithTargetSize2(Uri image) {
+        ImageDecoder.OnHeaderDecodedListener header = new ImageDecoder.OnHeaderDecodedListener() {
+            @Override
+            public void onHeaderDecoded(@NonNull ImageDecoder imageDecoder,
+                                        @NonNull ImageDecoder.ImageInfo imageInfo,
+                                        @NonNull ImageDecoder.Source source) {
+                android.util.Size initialSize = imageInfo.getSize();
+
+                int areaLimit = REQUIRED_IMAGE_WIDTH * REQUIRED_IMAGE_WIDTH;
+                int targetWidth = (int) Math.sqrt((double) areaLimit * initialSize.getWidth() / initialSize.getHeight());
+                int targetHeight = (int) Math.sqrt((double) areaLimit * initialSize.getHeight() / initialSize.getWidth());
+                imageDecoder.setTargetSize(targetWidth, targetHeight);
+            }
+        };
+
+        ImageDecoder.Source source = ImageDecoder.createSource(getContentResolver(), image);
+        try {
+            long start = System.currentTimeMillis();
+            Bitmap bitmap = ImageDecoder.decodeBitmap(source, header);
+            Log.d(TAG, "decodeScaledBitmapWithTargetSize2: " + (System.currentTimeMillis() - start));
+            return bitmap;
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -295,10 +334,6 @@ public class MainActivity extends AppCompatActivity {
         }
 
         return result;
-    }
-
-    private int calculatingInTargetDensity(int primarySize, int inSampleSize) {
-        return (int) Math.ceil(((primarySize * 1.0 - 0.5) * inSampleSize));
     }
 
     private boolean isAtLeastPie() {
